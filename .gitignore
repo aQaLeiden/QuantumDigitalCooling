@@ -1,3 +1,10 @@
+# Mac OSX desktop service store
+.DS_Store
+
+# SLURM job sctipts and output dumps
+slurm-working-dir/jobs/
+slurm-working-dir/out/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
