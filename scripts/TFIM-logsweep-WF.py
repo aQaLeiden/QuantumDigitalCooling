@@ -64,6 +64,7 @@ if not cooling_out_exists:
     print('\nRunning cooling simulation')
     stopwatch = time.time()
 
+    norm_samples = []
     energy_samples = []
     gsf_samples = []
     for _ in range(n_samples):
@@ -78,8 +79,16 @@ if not cooling_out_exists:
         )
         final_state = res.final_state[::2]  # discard fridge
 
-        energy_samples.append(system.energy_expval(final_state))
-        gsf_samples.append(system.ground_space_fidelity(final_state))
+        # Compute the norm to normalize sampled results:
+        #    The numerical error produces a non-normalized final state.
+        #    This seems to be the dominant error in the final result.
+        #    To keep this under check, we store the resulting state norms.
+        norm = np.sqrt(np.sum(np.abs(final_state)**2))
+        norm_samples.append(np.float64(
+            norm
+        ))  # conversion to np.float64 needed for compatibility with json.
+        energy_samples.append(system.energy_expval(final_state) / norm)
+        gsf_samples.append(system.ground_space_fidelity(final_state) / norm)
 
     out_dict = dict(
         L=L,
@@ -91,6 +100,7 @@ if not cooling_out_exists:
         energy_std=np.std(energy_samples),
         gsf_avg=np.mean(gsf_samples),
         gsf_std=np.std(gsf_samples),
+        norm_check_samples=norm_samples,
         energy_samples=energy_samples,
         gsf_samples=gsf_samples
     )
@@ -119,8 +129,17 @@ if not reheating_out_exists:
         )
         final_state = res.final_state[::2]  # discard fridge
 
-        energy_samples.append(system.energy_expval(final_state))
-        gsf_samples.append(system.ground_space_fidelity(final_state))
+        # Compute the norm to normalize sampled results:
+        #    The numerical error produces a non-normalized final state.
+        #    This seems to be the dominant error in the final result.
+        #    To keep this under check, we store the resulting state norms.
+        norm = np.sqrt(np.sum(np.abs(final_state)**2))
+        norm_samples.append(np.float64(
+            norm
+        ))  # conversion to np.float64 needed for compatibility with json.
+
+        energy_samples.append(system.energy_expval(final_state) / norm)
+        gsf_samples.append(system.ground_space_fidelity(final_state) / norm)
 
     out_dict = dict(
         L=L,
@@ -132,6 +151,7 @@ if not reheating_out_exists:
         energy_std=np.std(energy_samples),
         gsf_avg=np.mean(gsf_samples),
         gsf_std=np.std(gsf_samples),
+        norm_check_samples=norm_samples,
         energy_samples=energy_samples,
         gsf_samples=gsf_samples
     )
