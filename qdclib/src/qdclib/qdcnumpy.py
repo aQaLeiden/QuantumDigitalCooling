@@ -91,7 +91,8 @@ def _nonunitary_step_wf_matr(wf_matrix_sys, coupled_evo):
         system_wf_1 = full_wf_matr[1::2, idx]
         norm_0 = np.sum(np.abs(system_wf_0)**2)
         norm_1 = np.sum(np.abs(system_wf_1)**2)
-        if np.random.choice([True, False], p=[norm_0, norm_1]):
+        if np.random.choice([True, False],
+                            p=np.array([norm_0, norm_1] / (norm_0 + norm_1))):
             buffer_wf_matr[:, idx] = system_wf_0 / np.sqrt(norm_0)
         else:
             buffer_wf_matr[:, idx] = system_wf_1 / np.sqrt(norm_1)
