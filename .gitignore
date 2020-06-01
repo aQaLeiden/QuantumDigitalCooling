@@ -1,3 +1,6 @@
+# temporarily exclude figures folder
+figures
+
 # Mac OSX desktop service store
 .DS_Store
 

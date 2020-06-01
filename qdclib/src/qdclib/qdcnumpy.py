@@ -15,44 +15,158 @@ from qdclib._quantum_simulated_system import QuantumSimulatedSystem
 from qdclib.qdcutils import *
 
 
+# **********************************
+# *** INTERNAL UTILITY FUNCTIONS ***
+# **********************************
+
+def _check_input_set_mode(init_state, mode, dimension):
+    '''
+    Checks wether init_state has the right form, and sets the 'auto' mode
+    to the correct one.
+
+    Args:
+        init_state: density matrix, state vector or matrix of state
+            coulumn-vectors of the initial state.
+        mode: 'auto', 'DM' or 'WF'
+        dimension: dimension of system hilbert space (to check input size)
+
+    Returns:
+        mode: either 'DM', 'WF-matrix' or 'WF-single'
+
+    Raises:
+        ValueError: if init_state is invalid
+        TypeError: if the input state is not an array
+    '''
+    if not isinstance(init_state, np.ndarray):
+        raise TypeError('init_state is not a np.ndarray')
+    shape = init_state.shape
+    if len(shape) not in [1, 2]:
+        raise ValueError(f'Invalid shape of input state: {shape}')
+    if shape[0] != dimension:
+        raise TypeError(f'Invalid shape {shape} for d={dimension}-dimensional '
+                        'system Hilbert space')
+    if mode == 'DM':
+        if not len(shape == 2):
+            raise TypeError('Input is not a density matrix and mode is DM')
+        if not (shape[0] == shape[1]):
+            raise TypeError('Input is not a density matrix and mode is DM')
+    if mode == 'auto':
+        if len(shape) == 2:
+            if shape[0] == shape[1]:
+                mode = 'DM'
+            else:
+                mode = 'WF'
+        else:
+            mode = 'WF'
+    else:
+        mode = 'WF'
+    if mode == 'WF':
+        if len(shape) == 1:
+            mode = 'WF-single'
+        else:
+            mode = 'WF-matrix'
+    if mode not in ['DM', 'WF-single', 'WF-matrix']:
+        raise ValueError(f'Invalid mode {mode}')
+    return mode
+
+
 # ****************************
 # *** CONTINUOUS QDC STEPS ***
 # ****************************
 
-def _cont_evo_step_dm(dm_sys, ham_sys, coupling, epsilon, t, gamma):
+def _nonunitary_step_wf_matr(wf_matrix_sys, coupled_evo):
     '''
-        Internal function: implement QDC step in the case the input is a DM.
+    TODO implement and test
+    '''
+    # initialize fridge, tensor it with system state
+    full_wf_matr = np.kron(wf_matrix_sys, [[1], [0]])
+    # evolve
+    full_wf_matr = coupled_evo @ full_wf_matr
+
+    # trace out fridge, which will be in |0> after last reset
+    buffer_wf_matr = np.empty_like(wf_matrix_sys)
+    for idx in range(wf_matrix_sys.shape[1]):
+        # unnormalized system states when fridge is in |0> and |1> respectively
+        system_wf_0 = full_wf_matr[::2, idx]
+        system_wf_1 = full_wf_matr[1::2, idx]
+        norm_0 = np.sum(np.abs(system_wf_0)**2)
+        norm_1 = np.sum(np.abs(system_wf_1)**2)
+        if np.random.choice([True, False], p=[norm_0, norm_1]):
+            buffer_wf_matr[:, idx] = system_wf_0 / np.sqrt(norm_0)
+        else:
+            buffer_wf_matr[:, idx] = system_wf_1 / np.sqrt(norm_1)
+    # TODO is any optimization possible in this block?
+
+    return buffer_wf_matr
+
+
+
+def _nonunitary_step_dm(dm_sys, coupled_evo):
+    '''
+    TODO test
     '''
     # initialize fridge, tensor it with system state
     dm = np.kron(dm_sys, [[1, 0], [0, 0]])
 
-    X = np.array([[0, 1], [1, 0]])
-    Z = np.array([[1, 0], [0, -1]])
-    # fast hermitian matrix exponential -> coupled evolution
-    eigvals, eigvecs = scipy.linalg.eigh(
-        np.kron(ham_sys, np.eye(2))
-        + np.kron(np.eye(*np.shape(ham_sys)), - Z / 2 * epsilon)
-        + np.kron(coupling, X / 2 * gamma)
-    )
-
-    phases = np.exp(1j * eigvals * t)
-    evo = eigvecs @ np.diag(phases) @ eigvecs.conjugate().T
-
     # evolve the composite state
-    dm = evo @ dm @ evo.conjugate().transpose()
+    dm = coupled_evo @ dm @ coupled_evo.conjugate().transpose()
 
     # trace out fridge and return
     return trace_out(dm, -1)
 
 
-def _cont_evo_step_wf(wf_sys, ham_sys, coupling, epsilon, t, gamma):
+def continuous_evolution_step(
+    state: np.ndarray,
+    ham_sys: np.ndarray,
+    coupling: np.ndarray,
+    epsilon: float,
+    t: float,
+    gamma: float,
+    mode: Union['auto', 'DM', 'WF'] = 'auto'
+) -> np.ndarray:
     '''
-        Internal function: implement QDC step in the case the input is a WF,
-            using Monte Carlo sampling for the reset.
-    '''
-    # initialize fridge, tensor it with system state
-    wf = np.kron(wf_sys, [1, 0])
+    Apply a consinuous evolution + instantaneous reset QDC step to the
+    input state.
 
+    Depending on the value of `mode`, either density matrix simulation or
+    wavefunction + Monte Carlo sampling for nonunitary operations is used.
+    Wavefunction simulation can run in parallel on multiple initial state
+    vectors: in this case, init_state should be a matrix which column vectors
+    are the state vectors.
+
+    Args:
+        init_state: density matrix, state vector or matrix of state
+            coulumn-vectors of the initial state.
+        ham_sys: Hamiltonian matrix of the system
+        coupling: Coupling potential matrix
+        epsilon: fridge energy
+        t: coupling time
+        gamma: coupling strength
+        mode: Whether to use density matrix or wavefunction simulation. If set
+            to 'auto' (default), the choice will be made depending on the input
+            type (square matrix -> 'DM', vector or rectangular matrix -> 'WF')
+    Returns:
+        System state after application of the step, matching the input type.
+
+    Raises:
+        ValueError: if the input state has the wrong form for the mode.
+        TypeError: if the input state is not a np.ndarray
+
+    ---
+
+    Typical parameters for continuous QDC steps:
+        weak coupling:
+            t >> E_transition
+            epsilon = E_transition
+            gamma = pi / t
+        continuous strong coupling:
+            t = sqrt(3) pi / (2 E_transition)
+            epsilon = E_transition
+            gamma = 2/sqrt(3) * E_transition
+    '''
+    mode = _check_input_set_mode(state, mode, np.shape(ham_sys)[0])
+
+    # compute coupled evolution operator
     X = np.array([[0, 1], [1, 0]])
     Z = np.array([[1, 0], [0, -1]])
     # fast hermitian matrix exponential -> coupled evolution
@@ -63,80 +177,34 @@ def _cont_evo_step_wf(wf_sys, ham_sys, coupling, epsilon, t, gamma):
     )
     phases = np.exp(1j * eigvals * t)
     evo = eigvecs @ np.diag(phases) @ eigvecs.conjugate().T
+    # TODO optimize evo calculation removing np.diag
 
-    # evolve the composite state
-    wf = evo @ wf
-
-    system_wf_0 = wf[::2]   # unnormalized system state when fridge is in |0>
-    system_wf_1 = wf[1::2]  # unnormalized system state when fridge is in |1>
-    norm_0 = np.sum(np.abs(system_wf_0)**2)
-    norm_1 = np.sum(np.abs(system_wf_1)**2)
-    if np.random.choice([True, False], p=[norm_0, norm_1]):
-        return system_wf_0 / np.sqrt(norm_0)
+    # run the nonunitary step corresponding to the selected mode
+    if mode == 'DM':
+        state = _nonunitary_step_dm(state, evo)
     else:
-        return system_wf_1 / np.sqrt(norm_0)
+        if mode == 'WF-single':
+            state = state.reshape((-1, 1))
+        state = _nonunitary_step_wf_matr(state, evo)
+        if mode == 'WF-single':
+            state = state.reshape(state.shape[0])
+    return state
 
 
-def continuous_evolution_step(state: np.ndarray,
-                              ham_sys: np.ndarray,
-                              coupling: np.ndarray,
-                              epsilon: float,
-                              t: float,
-                              gamma: float) -> np.ndarray:
+def continuous_weakcoupling_step(
+    state: np.ndarray,
+    ham_sys: np.ndarray,
+    coupling: np.ndarray,
+    epsilon: float,
+    delta: float,
+    mode: Union['auto', 'DM', 'WF'] = 'auto'
+) -> np.ndarray:
     '''
-        Apply a consinuous evolution + instantaneous reset QDC step to the
-        input state.
-        Depending on the input, either density matrix simulation or Monte
-        Carlo sampling of nonunitary operations is used.
-        see below for typical QDC parameters.
-
-        Args:
-            state: density matrix or wavefunction encoding the state of the
-                system. If a density matrix is given, density matrix (exact)
-                simulation is performed. If a vector is given, Monte Carlo
-                sampling is used for non-unitary resets.
-            ham_sys: Hamiltonian matrix of the system
-            coupling: Coupling potential matrix
-            epsilon: fridge energy
-            t: coupling time
-            gamma: coupling strength
-
-        Returns:
-            System state after application of the step, as a density matrix or
-                wavefunction matching the input type.
-
-        ---
-
-        Typical parameters for continuous QDC steps:
-            weak coupling:
-                t >> E_transition
-                epsilon = E_transition
-                gamma = pi / t
-            continuous strong coupling:
-                t = sqrt(3) pi / (2 E_transition)
-                epsilon = E_transition
-                gamma = 2/sqrt(3) * E_transition
-    '''
-    if len(np.shape(state)) == 2:
-        return _cont_evo_step_dm(state, ham_sys, coupling, epsilon, t, gamma)
-    elif len(np.shape(state)) == 1:
-        return _cont_evo_step_wf(state, ham_sys, coupling, epsilon, t, gamma)
-    else:
-        raise TypeError('the input state is not a wavefunction or density'
-                        'matrix')
-
-
-def continuous_weakcoupling_step(state: np.ndarray,
-                                 ham_sys: np.ndarray,
-                                 coupling: np.ndarray,
-                                 epsilon: float,
-                                 delta: float) -> np.ndarray:
-    '''
-        Implementation of the continuous evolution weak coupling step,
-        with parameters:
-            t = 1 / delta
-            gamma = pi * delta
-        See continuous_evolution_step for details.
+    Implementation of the continuous evolution weak coupling step, with
+    parameters:
+        t = 1 / delta
+        gamma = pi * delta
+    See continuous_evolution_step for details.
     '''
     return continuous_evolution_step(state, ham_sys, coupling, epsilon,
                                      t=1 / delta, gamma=np.pi * delta)
@@ -150,41 +218,53 @@ def continuous_weakcoupling_step(state: np.ndarray,
 
 
 # **************************
-# *** COUPLING FUNCTIONS ***
-# **************************
-
-
-# **************************
 # *** FULL QDC PROTOCOLS ***
 # **************************
 
-def _continuous_energy_sweep_protocol_dm(
+def continuous_energy_sweep_protocol(
     init_state: np.ndarray,
     system: QuantumSimulatedSystem,
     couplings: Union[Tuple[str, ...],
                      Tuple[np.ndarray, ...]],
     epsilon_list: Tuple[float, ...],
-    delta_list: Tuple[float, ...]
+    delta_list: Tuple[float, ...],
+    mode: Union['auto', 'DM', 'WF'] = 'auto'
 ) -> np.ndarray:
     '''
-    Returns the state after application of a generic QDC protocol with chosen
-    fridge energies, linewidths and couplings on a QuantumSimulatedSystem.
+    Returns the state after application of a generic continuous-evolution
+    QDC protocol with chosen fridge energies, linewidths and couplings on a
+    QuantumSimulatedSystem.
 
-    NB: for performance, this function acts directly on init_state. Deepcopy
-        input state on function call if side effects have to be avoided.
+    Depending on the value of `mode`, either density matrix simulation or
+    wavefunction+Monte Carlo sampling for nonunitary operations is used.
+    Wavefunction simulation can run in parallel on multiple initial state
+    vectors: in which case, init_state should be a matrix which column vectors
+    are the state vectors.
 
     Args:
-        init_state: density matrix of the initial state.
+        init_state: density matrix, state vector or matrix of state
+            coulumn-vectors of the initial state.
         system: object containing Hamiltonian and simulation data.
         couplings: how to choose couplings in subsequent cooling steps.
             Accepted choices are:
             - a tuple of values among "X", "Y" and "Z", indicating to choose PX
                 couplings for each of the system qubits in sequence, with
                 values of P chosen in the tuple.
-            - a tuple of matrices representing coupling hamiltonians
+            - a tuple of matrices representing coupling potentials
         epsilon_list: fridge energy sequence.
         delta_list: cooling linewidth sequence.
+        mode: Whether to use density matrix or wavefunction simulation. If set
+            to 'auto' (default), the choice will be made depending on the input
+            type (square matrix -> 'DM', vector or rectangular matrix -> 'WF')
+
+    Raises:
+        ValueError: if the input state has the wrong form for the mode,
+            or if the input system is sparse-encoded
+        TypeError: if the input state is not a np.ndarray
     '''
+    if system.sparse:
+        raise ValueError('continuous-evolution simulation does not support'
+                         'sparse-encoded sysyems.')
     eigvals, eigvecs = system.eig()
 
     if couplings[0] in ['X', 'Y', 'Z']:
@@ -206,60 +286,22 @@ def _continuous_energy_sweep_protocol_dm(
                                                  ham_sys=hamiltonian,
                                                  coupling=coupling,
                                                  epsilon=epsilon,
-                                                 delta=delta
-                                                 )
+                                                 delta=delta,
+                                                 mode=mode)
 
     return state
 
 
-def continuous_energy_sweep_protocol(
+def continuous_logsweep_protocol(
     init_state: np.ndarray,
     system: QuantumSimulatedSystem,
-    couplings: Union[Tuple[str, ...],
-                     Tuple[np.ndarray, ...]],
-    epsilon_list: Tuple[float, ...],
-    delta_list: Tuple[float, ...]
+    n_energy_steps: int,
+    mode: Union['auto', 'DM', 'WF'] = 'auto'
 ) -> np.ndarray:
-    '''
-    Returns the state after application of a generic continuous-evolution
-    QDC protocol with chosen fridge energies, linewidths and couplings on a
-    QuantumSimulatedSystem.
-
-    Depending on the input, either density matrix simulation or Monte
-    Carlo sampling of nonunitary operations is used.
-    (TODO wavefunction approach currently unavailable)
-
-    NB: for performance, this function acts directly on init_state. Deepcopy
-        input state on function call if side effects have to be avoided.
-
-    Args:
-        init_state: density matrix or wavefunction of the initial state.
-        system: object containing Hamiltonian and simulation data.
-        couplings: how to choose couplings in subsequent cooling steps.
-            Accepted choices are:
-            - a tuple of values among "X", "Y" and "Z", indicating to choose PX
-                couplings for each of the system qubits in sequence, with
-                values of P chosen in the tuple.
-            - a tuple of matrices representing coupling potentials
-        epsilon_list: fridge energy sequence.
-        delta_list: cooling linewidth sequence.
-    '''
-    if len(np.shape(init_state)) == 2:
-        return _continuous_energy_sweep_protocol_dm(
-            init_state, system, couplings, epsilon_list, delta_list)
-    elif len(np.shape(init_state)) == 1:
-        raise Exception('Wavefunction aproach yet not available')
-    else:
-        raise TypeError('the input state is not a wavefunction or density'
-                        'matrix')
-
-
-def continuous_logsweep_protocol(init_state: np.ndarray,
-                                 system: QuantumSimulatedSystem,
-                                 n_energy_steps: int) -> np.ndarray:
     '''
     Runs the continuous-evolution QDC LogSweep protocol on the state init_state
     of a QuantumSimulatedSystem.
+    For details and caveats, see `qdcnumpy.continuous_energy_sweep_protocol`.
 
     Couplings are XX, XY, XZ on each of the system's qubits in sequence.
     Energies and linewidths are chosen according to:
@@ -269,12 +311,21 @@ def continuous_logsweep_protocol(init_state: np.ndarray,
     Where delta_factor is optimized as indicated in appendix B of the paper.
 
     Args:
-        init_state: density matrix or wavefunction of the initial state.
+        init_state: density matrix, state vector or matrix of state
+            coulumn-vectors of the initial state.
         system: object containing Hamiltonian and simulation data.
         n_energy_steps: energy gradation number K.
+        mode: Whether to use density matrix or wavefunction simulation. If set
+            to 'auto' (default), the choice will be made depending on the input
+            type (square matrix -> 'DM', vector or rectangular matrix -> 'WF')
 
     Returns:
         state (density matrix) after the application of the protocol
+
+    Raises:
+        ValueError: if the input state has the wrong form for the mode,
+            or if the input system is sparse-encoded
+        TypeError: if the input state is not a np.ndarray
     '''
     L = len(system.get_qubits())
     coupl_potentials = [
@@ -301,8 +352,8 @@ def continuous_logsweep_protocol(init_state: np.ndarray,
                                             system=system,
                                             couplings=['X', 'Y', 'Z'],
                                             epsilon_list=epsilon_list,
-                                            delta_list=delta_list)
-
+                                            delta_list=delta_list,
+                                            mode=mode)
 
 #
 #
