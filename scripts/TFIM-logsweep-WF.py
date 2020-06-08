@@ -118,6 +118,7 @@ if not reheating_out_exists:
 
     energy_samples = []
     gsf_samples = []
+    norm_samples = []
     for _ in range(n_samples):
         # initialize a random ground state of system tensored with fridge |0>
         randidx = np.random.randint(system.ground_state_degeneracy)
