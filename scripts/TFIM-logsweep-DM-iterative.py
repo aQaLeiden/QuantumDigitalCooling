@@ -6,7 +6,7 @@ Iterative LogSweep consists in iterating the LogSweep(n_energy_steps = k)
 protocol for all 2 <= k <= K. This allows efficient cooling from higher-energy
 transitions without increasing reheating at the last relevant step.
 
-The output consists in two .json files
+The output consists in a .json file
 '''
 import os
 import sys
@@ -41,7 +41,7 @@ stopwatch = time.time()
 system = spinmodels.TFIMChain(L, JvB, 1)
 system.normalize()
 
-circuit = Circuit([qdccirq.logsweep_protocol(system, K)
+circuit = Circuit([qdccirq.logsweep_protocol(system, K_step)
                    for K_step in range(2, K + 1)])
 simulator = DensityMatrixSimulator()
 print('done in', time.time() - stopwatch, 'seconds.')
