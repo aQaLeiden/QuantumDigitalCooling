@@ -27,9 +27,11 @@ import json
 from qdclib import qdccirq
 from qdclib import spinmodels
 
+# prepare file path
 os.makedirs(data_dir, exist_ok=True)
 outfile = os.path.join(data_dir, f"L{L}JvB{JvB}K{K}.json")
 
+# Check existance of output to avoid repeating simulations.
 if os.path.exists(outfile):
     print(outfile, 'exitst already.')
     print('exiting.')
@@ -40,7 +42,6 @@ print('\nBuilding circuit')
 stopwatch = time.time()
 system = spinmodels.TFIMChain(L, JvB, 1)
 system.normalize()
-
 circuit = Circuit([qdccirq.logsweep_protocol(system, K_step)
                    for K_step in range(2, K + 1)])
 simulator = DensityMatrixSimulator()

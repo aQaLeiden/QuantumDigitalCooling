@@ -27,6 +27,7 @@ from qdclib import qdcnumpy
 from qdclib import spinmodels
 
 
+# Prepare file paths
 cooling_dir = os.path.join(data_dir, "cooling")
 reheating_dir = os.path.join(data_dir, "reheating")
 os.makedirs(cooling_dir, exist_ok=True)
@@ -34,7 +35,7 @@ os.makedirs(reheating_dir, exist_ok=True)
 outfile_cooling = os.path.join(cooling_dir, f"L{L}JvB{JvB}K{K}.json")
 outfile_reheating = os.path.join(reheating_dir, f"L{L}JvB{JvB}K{K}.json")
 
-
+# Check existance of output to avoid repeating simulations.
 reheating_out_exists = False
 if os.path.exists(outfile_cooling):
     print(f'output file {outfile_cooling} exists already.')
@@ -50,6 +51,7 @@ if cooling_out_exists and reheating_out_exists:
     print('exiting.')
     exit()
 
+# Prepare system
 system = spinmodels.TFIMChain(L, JvB, 1)
 system.normalize()
 
