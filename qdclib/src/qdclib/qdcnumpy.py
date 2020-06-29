@@ -1,7 +1,16 @@
 '''
-Quantum Digital Cooling (QDC) implementation with cirq and openfermion.
+Quantum Digital Cooling (QDC) implementation with numpy and openfermion.
 
-V1.0 -- incompatible with previous (unnumbered) module
+In the continuous QDC steps implemented here, the coupled system-fridge
+evolution is simulated analogically:
+    U = Exp[-i (H_sys + H_fridge + H_coupl) t]
+
+The module offers two approaches to simulation:
+    - with `mode = 'DM'` the state is stored in density matrices, and the
+        non-unitary evolution is deterministically implemented
+    - with `mode = 'WF'` a number of sample state vectors is stored as column
+        vecors in a matrix. The non-unitary part of the evolution is realized
+        through Monte Carlo sampling.
 '''
 
 from typing import Union, Tuple
@@ -99,7 +108,6 @@ def _nonunitary_step_wf_matr(wf_matrix_sys, coupled_evo):
     # TODO is any optimization possible in this block?
 
     return buffer_wf_matr
-
 
 
 def _nonunitary_step_dm(dm_sys, coupled_evo):
@@ -215,6 +223,8 @@ def continuous_weakcoupling_step(
 # *** HYBRID QDC STEPS ***
 # ************************
 
+# Hybrid steps combine a continuous simulation of system Hamiltonian and a
+# trotterized approach to system-fridge coupling simulation.
 # TODO
 
 
@@ -342,9 +352,7 @@ def continuous_logsweep_protocol(
     e_max = e_max_transitions
 
     # define delta_factor
-    h = e_max / e_min
-    R = np.log(h) * ((1 - h) / (2 * (1 + h)) + np.log(2 * h / (1 + h)))
-    delta_factor = np.log(n_energy_steps * 8 / R) / 2 / np.pi
+    delta_factor = opt_delta_factor(e_min, e_max, n_energy_steps)
 
     epsilon_list, delta_list = logsweep_params(e_min, e_max, n_energy_steps,
                                                delta_factor)

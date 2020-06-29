@@ -1,7 +1,5 @@
 '''
 Quantum Digital Cooling (QDC) implementation with cirq and openfermion.
-
-V1.0 -- incompatible with previous (unnumbered) module
 '''
 
 from typing import Union, Callable, Tuple
@@ -35,7 +33,7 @@ def qdc_step(HS_step_f: Callable[[float], Circuit],
              HS_trotter_factor: int = 1) -> Circuit:
     '''
     Circuit implementing a generic 2nd-order trotterized QDC step.
-    Typical params of QDC steps are indicated below.
+    Typical parameters of QDC steps are indicated below.
 
     Args:
         HS_step_f (`function(dt)`): function returning cirq.Circuit for a
@@ -133,24 +131,20 @@ def weakcoupling_step(HS_step_f: Callable[[float], Circuit],
                 genetated by the system-fridge coupling.
         epsilon: fridge energy
         delta: linewidth (defined as 1/t, the inverse of coupling time)
-        E_max: spectral spread of the system (used to compute trotter
-            steps)
+        spectral_spread: spectral spread of the system, used to compute the
+            required number of trotter steps
+        trotter_factor: multiplicative prefactor to compute the number of
+            trotter steps (should be >1, standard choice is 2).
         HS_trotter_factor: multiplicative factor for number  of trotter steps
             employed for the system evolution Hamiltonian simulation.
 
     Returns:
         Circuit of the cooling step. Includes final fridge reset.
     '''
-    # old choice of number of trotter steps:
-    # qdc_trotter_number = int(trotter_factor *
-    #     np.sqrt( 1 + ( epsilon + E_max ) ** 2 / ( 2 * np.pi * delta ) ** 2 )
-    # )
 
-    # new choice of number of trotter steps:
-    qdc_trotter_number = int(
-        trotter_factor * np.sqrt(1 + (spectral_spread) ** 2
-                                 / (np.pi * delta) ** 2)
-    )
+    qdc_trotter_number = trotter_number_weakcoupling_step(delta,
+                                                          spectral_spread,
+                                                          trotter_factor)
 
     return qdc_step(HS_step_f=HS_step_f,
                     coupl_step_f=coupl_step_f,
@@ -195,6 +189,29 @@ def PX_coupl_f(qubit: Qid, P: str) -> Circuit:
 # *** FULL QDC PROTOCOLS ***
 # **************************
 
+def _pauli_couplings_from_strings(
+    couplings: Tuple[str, ...],
+    qubits: Tuple[Qid, ...]
+) -> Tuple[Callable[[float, float], Circuit], ...]:
+    '''
+    Returns the functional form of couplings expressed as single-qubit Pauli
+    coupling potentials.
+
+    Args:
+        couplings: a tuple of values among "X", "Y" and "Z", indicating to
+            choose PX couplings for each of the system qubits in sequence,
+            with values of P chosen in the tuple.
+
+    Returns:
+        a tuple of functions [`function(dt, gamma) -> step_circuit`], each
+            returning the circuit implementing the 1st-order Trotter simulation
+            of the PX coupling Hamiltonian (defined as above).
+    '''
+    return [PX_coupl_f(qubit, P)
+            for qubit in qubits
+            for P in couplings]
+
+
 def energy_sweep_protocol(
     system: QuantumSimulatedSystem,
     couplings: Union[Tuple[str, ...],
@@ -223,10 +240,7 @@ def energy_sweep_protocol(
     spectral_spread = eigvals[-1] - eigvals[0]
 
     if couplings[0] in ['X', 'Y', 'Z']:
-        couplings = [PX_coupl_f(qubit, P)
-                     for qubit in system.get_qubits()
-                     for P in couplings
-                     ]
+        couplings = _pauli_couplings_from_str(couplings, system.get_qubits())
 
     c = Circuit()
     for epsilon, delta in zip(epsilon_list, delta_list):
@@ -244,7 +258,7 @@ def energy_sweep_protocol(
 def logsweep_protocol(system: QuantumSimulatedSystem,
                       n_energy_steps: int) -> Circuit:
     '''
-    Runs the QDC LogSweep protocol on a QuantumSimulatedSystem.
+    Returns circuit of the QDC LogSweep protocol on a QuantumSimulatedSystem.
     Couplings are XX, XY, XZ on each of the system's qubits in sequence.
     Energies and linewidths are chosen according to:
         epsilon[0] == e_max
@@ -270,9 +284,7 @@ def logsweep_protocol(system: QuantumSimulatedSystem,
     e_max = e_max_transitions
 
     # define delta_factor
-    h = e_max / e_min
-    R = np.log(h) * ((1 - h) / (2 * (1 + h)) + np.log(2 * h / (1 + h)))
-    delta_factor = np.log(n_energy_steps * 8 / R) / 2 / np.pi
+    delta_factor = opt_delta_factor(e_min, e_max, n_energy_steps)
 
     epsilon_list, delta_list = logsweep_params(e_min, e_max, n_energy_steps,
                                                delta_factor)
@@ -281,3 +293,47 @@ def logsweep_protocol(system: QuantumSimulatedSystem,
                                  couplings=['X', 'Y', 'Z'],
                                  epsilon_list=epsilon_list,
                                  delta_list=delta_list)
+
+
+def bangbang_protocol(
+    system: QuantumSimulatedSystem,
+    coupling_paulis: Tuple[str, ...],
+    iterations: int
+) -> Circuit:
+    '''
+    Returns circuit of the bang-bang QDC protocol, based on PX couplings
+        repeated on each of the system's qubits. Fridge energy is choosen
+        equal to the perp_norm of the commutator between the coupling potential
+        and the system hamiltonian.
+        Couplings that commute with the Hamiltonian (perp_norm smaller than
+        a cutoff value of 1e-08) are discarded.
+
+    Args:
+        system: object containing Hamiltonian and simulation data.
+        coupling_paulis: a tuple of values among "X", "Y" and "Z", indicating
+            to choose PX couplings for each of the system qubits in sequence,
+            with values of P chosen in the tuple.
+            - a tuple of functions [`function(dt, gamma) -> step_circuit`]
+                returning the circuit implementing the 1st-order Trotter
+                simulation of the coupling Hamiltonian.
+        iterations: number of times for which to iterate the sweep over
+            coupling potentials and qubits.
+    '''
+    n_qubits = len(system.get_qubits())
+
+    c = Circuit()
+    for qubit_idx, qubit in enumerate(system.get_qubits()):
+        for P in coupling_paulis:
+            coupling_qop = ops.QubitOperator(P + str(qubit_idx))
+            coupling_sparse = transforms.get_sparse_operator(coupling_qop,
+                                                             n_qubits=n_qubits)
+            epsilon = perp_norm(coupling_sparse,
+                                system.get_sparse_hamiltonian())
+
+            if not np.isclose(epsilon, 0, atol=1e-08):
+                c.append(bangbang_step(HS_step_f=system.tr2_step,
+                                       coupl_step_f=PX_coupl_f(qubit, P),
+                                       epsilon=epsilon,
+                                       HS_trotter_factor=1))
+
+    return c * iterations

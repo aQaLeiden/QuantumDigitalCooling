@@ -68,6 +68,39 @@ def logsweep_params(e_min: float,
     return e_list, d_list
 
 
+def opt_delta_factor(e_min: float, e_max: float, n_energy_steps: int) -> float:
+    '''
+    Returns the optimal delta_factor for the standard LogSweep protocol,
+    according to appendix A of the QDC paper
+    '''
+    h = e_max / e_min
+    R = np.log(h) * ((1 - h) / (2 * (1 + h)) + np.log(2 * h / (1 + h)))
+    delta_factor = np.log(n_energy_steps * 8 / R) / 2 / np.pi
+    return delta_factor
+
+
+def trotter_number_weakcoupling_step(delta: float,
+                                     spectral_spread: float,
+                                     trotter_factor: int = 2) -> int:
+    '''
+    Default number of trotter steps M for a QDC weak coupling step:
+        M = int(trotter_factor * np.sqrt(1 + (E_max) ** 2 / (PI * delta) ** 2))
+    '''
+
+    # old choice of number of trotter steps:
+    # qdc_trotter_number = int(trotter_factor *
+    #     np.sqrt( 1 + ( epsilon + E_max ) ** 2 / ( 2 * np.pi * delta ) ** 2 )
+    # )
+
+    # new choice of number of trotter steps:
+    qdc_trotter_number = int(
+        trotter_factor * np.sqrt(1 + (spectral_spread) ** 2
+                                 / (np.pi * delta) ** 2)
+    )
+
+    return qdc_trotter_number
+
+
 def trace_out(state: np.ndarray, qubit_index: int) -> np.ndarray:
     '''
         Partial trace on a one qubit-subspace.

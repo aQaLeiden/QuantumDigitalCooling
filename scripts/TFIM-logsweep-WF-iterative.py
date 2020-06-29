@@ -1,5 +1,5 @@
 '''
-Simulate iterative LogSweep on a normalized TFIM chain system, using 
+Simulate iterative LogSweep on a normalized TFIM chain system, using
 wavefunction simulation + Monte Carlo sampling of non-unitary operations.
 Save results to a file.
 

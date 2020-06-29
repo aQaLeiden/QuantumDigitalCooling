@@ -1,22 +1,27 @@
 '''
-Simulate standard LogSweep cooling (from maximally-mixed state) and reheating
+Simulate BangBang protocol with XY couplings.
+Simulate both cooling (from maximally-mixed state) and reheating
 (from ground state) on a normalized TFIM chain system, using wave vector
-simulation and random sampling of nonunitary operations.
+simulations (sparse unitaries and random sampling of nonunitary operations and
+mixed states).
 Save results to a file.
 
-The output consists in two .json files
+The output consists in two .json files (one for cooling and one for reheating).
 '''
 import os
 import sys
 
 if len(sys.argv) < 6:
-    raise(Exception(f"usage: python {sys.argv[0]}"
-                    "<L> <J/B> <K> <n_samples> <data_dir>"))
+    raise(Exception(f"usage: python {sys.argv[0]} "
+                    "<L> <J/B> <n_iterations (nit)> <n_samples> <data_dir>"))
 L = int(sys.argv[1])
 JvB = float(sys.argv[2])
-K = int(sys.argv[3])
+nit = int(sys.argv[3])  # number of iterations
 n_samples = int(sys.argv[4])
 data_dir = sys.argv[5]
+
+COUPLING_PAULIS = ('Y')
+MAX_SIZE_DENSE = 3  # for L larger than this, sparse representation is used
 
 import numpy as np
 import time
@@ -33,8 +38,8 @@ cooling_dir = os.path.join(data_dir, "cooling")
 reheating_dir = os.path.join(data_dir, "reheating")
 os.makedirs(cooling_dir, exist_ok=True)
 os.makedirs(reheating_dir, exist_ok=True)
-outfile_cooling = os.path.join(cooling_dir, f"L{L}JvB{JvB}K{K}.json")
-outfile_reheating = os.path.join(reheating_dir, f"L{L}JvB{JvB}K{K}.json")
+outfile_cooling = os.path.join(cooling_dir, f"L{L}JvB{JvB}nit{nit}.json")
+outfile_reheating = os.path.join(reheating_dir, f"L{L}JvB{JvB}nit{nit}.json")
 
 # Check existance of output to avoid repeating simulations.
 reheating_out_exists = False
@@ -54,9 +59,9 @@ if cooling_out_exists and reheating_out_exists:
 
 print('\nBuilding circuit')
 stopwatch = time.time()
-system = spinmodels.TFIMChain(L, JvB, 1)
+system = spinmodels.TFIMChain(L, JvB, 1, sparse=True)
 system.normalize()
-circuit = qdccirq.logsweep_protocol(system, K)
+circuit = qdccirq.bangbang_protocol(system, COUPLING_PAULIS, nit)
 simulator = Simulator()
 print('done in', time.time() - stopwatch, 'seconds.')
 
@@ -96,7 +101,7 @@ if not cooling_out_exists:
         L=L,
         J=system.J,
         B=system.B,
-        K=K,
+        nit=nit,
         init_state='random computational-basis state',
         energy_avg=np.mean(energy_samples),
         energy_std=np.std(energy_samples),
@@ -148,7 +153,7 @@ if not reheating_out_exists:
         L=L,
         J=system.J,
         B=system.B,
-        K=K,
+        nit=nit,
         init_state='random computational-basis state',
         energy_avg=np.mean(energy_samples),
         energy_std=np.std(energy_samples),
