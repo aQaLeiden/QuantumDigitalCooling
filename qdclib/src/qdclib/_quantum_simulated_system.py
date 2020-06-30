@@ -46,8 +46,9 @@ class QuantumSimulatedSystem(metaclass=abc.ABCMeta):
         '''
         Returns (eigenvalues, eigenvectors) of the system Hamiltonian.
         '''
-        if self.eigvals is None:
-            self.eigvals, self.eigvecs = scipy.linalg.eigh(self.sparse_ham.A)
+        if self.eigvals is not None:
+            return self.eigvals, self.eigvecs
+
         if self.sparse is True:
             self.eigvals = np.zeros(4)
             self.eigvecs = np.zeros((self.sparse_ham.shape[0], 4),
@@ -62,6 +63,8 @@ class QuantumSimulatedSystem(metaclass=abc.ABCMeta):
             assert all(self.eigvals[i] <= self.eigvals[i + 1]
                        for i in range(len(self.eigvals) - 1)), \
                 f'sparse diagonalization results are not sorted {self.eigvals}'
+        else:
+            self.eigvals, self.eigvecs = scipy.linalg.eigh(self.sparse_ham.A)
         return self.eigvals, self.eigvecs
 
     def energy_expval(self, state: np.ndarray):
