@@ -25,6 +25,7 @@ Scripts save results as a dictionary in a `.json` file, named using the paramete
 ### Data
 A set of pre-computed simulation outputs is included in this repository, under `./data`.
 The subdirectory structure of data follows the hierarchy:
+```
 `./data`
 └── `TFIM` - simulated system model
     └── `logsweep` - protocol
@@ -33,6 +34,7 @@ The subdirectory structure of data follows the hierarchy:
             │    └── `K2JvB2L2.json` - data files
             ├── `reheating`
             └── `iterative`
+```
 
 ### running scripts with SLURM
 QDC simulations are lengthy, for this reason they have been run on a HPC cluster [TODO cite maris].
