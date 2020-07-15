@@ -52,6 +52,7 @@ jobs:
       - name: Install requirements
         run: pip install -r requirements.txt
       - name: Install pytest
+        run: |
           cat dev_tools/config/pip-list-dev-tools.txt | grep pytest | grep -v "#" | xargs pip install
           git config --global user.name ${GITHUB_ACTOR}
       - name: Pytest check
