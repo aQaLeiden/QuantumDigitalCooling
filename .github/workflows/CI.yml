@@ -19,6 +19,8 @@ jobs:
         with:
           python-version: '3.6'
           architecture: 'x64'
+      - name: Install requirements
+        run: pip install -r requirements.txt
       - name: Install mypy
         run: cat dev_tools/config/pip-list-dev-tools.txt | grep mypy | xargs pip install
       - name: Type check
@@ -32,6 +34,8 @@ jobs:
         with:
           python-version: '3.6'
           architecture: 'x64'
+      - name: Install requirements
+        run: pip install -r requirements.txt
       - name: Install pylint
         run: cat dev_tools/config/pip-list-dev-tools.txt | grep "pylint\|astroid" | grep -v "#" | xargs pip install
       - name: Lint
@@ -46,9 +50,9 @@ jobs:
           python-version: '3.6'
           architecture: 'x64'
       - name: Install requirements
-        run: |
-          pip install -r requirements.txt
-          pip install -r dev_tools/config/pip-list-dev-tools.txt
+        run: pip install -r requirements.txt
+      - name: Install pytest
+          cat dev_tools/config/pip-list-dev-tools.txt | grep pytest | grep -v "#" | xargs pip install
           git config --global user.name ${GITHUB_ACTOR}
       - name: Pytest check
         run: check/pytest --actually-quiet
