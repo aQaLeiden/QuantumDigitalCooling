@@ -3,10 +3,11 @@ Base class for Hamiltonian models compatible with QDC protocols.
 '''
 
 from typing import Tuple
+import abc
+
 import numpy as np
 import scipy.linalg
 import scipy.sparse.linalg
-import abc
 
 import cirq
 
@@ -33,7 +34,6 @@ class QuantumSimulatedSystem(metaclass=abc.ABCMeta):
         '''
         Second-order Trotter step for Hamiltonian simulation.
         '''
-        pass
 
     # Inherited methods
     def get_qubits(self):

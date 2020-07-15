@@ -13,15 +13,15 @@ The module offers two approaches to simulation:
         through Monte Carlo sampling.
 '''
 
-from typing import Union, Tuple
+from typing import Union, Sequence
 
 import numpy as np
 import scipy.linalg
 
 from openfermion import ops, transforms
 
-from qdclib._quantum_simulated_system import QuantumSimulatedSystem
-from qdclib.qdcutils import *
+from ._quantum_simulated_system import QuantumSimulatedSystem
+from .qdcutils import (trace_out, perp_norm, opt_delta_factor, logsweep_params)
 
 
 # **********************************
@@ -131,7 +131,7 @@ def continuous_evolution_step(
     epsilon: float,
     t: float,
     gamma: float,
-    mode: Union['auto', 'DM', 'WF'] = 'auto'
+    mode: str = 'auto'
 ) -> np.ndarray:
     '''
     Apply a consinuous evolution + instantaneous reset QDC step to the
@@ -206,7 +206,7 @@ def continuous_weakcoupling_step(
     coupling: np.ndarray,
     epsilon: float,
     delta: float,
-    mode: Union['auto', 'DM', 'WF'] = 'auto'
+    mode: str = 'auto'
 ) -> np.ndarray:
     '''
     Implementation of the continuous evolution weak coupling step, with
@@ -235,11 +235,10 @@ def continuous_weakcoupling_step(
 def continuous_energy_sweep_protocol(
     init_state: np.ndarray,
     system: QuantumSimulatedSystem,
-    couplings: Union[Tuple[str, ...],
-                     Tuple[np.ndarray, ...]],
-    epsilon_list: Tuple[float, ...],
-    delta_list: Tuple[float, ...],
-    mode: Union['auto', 'DM', 'WF'] = 'auto'
+    couplings: Union[Sequence[str], Sequence[np.ndarray]],
+    epsilon_list: Sequence[float],
+    delta_list: Sequence[float],
+    mode: str = 'auto'
 ) -> np.ndarray:
     '''
     Returns the state after application of a generic continuous-evolution
@@ -276,7 +275,7 @@ def continuous_energy_sweep_protocol(
     if system.sparse:
         raise ValueError('continuous-evolution simulation does not support'
                          'sparse-encoded sysyems.')
-    eigvals, eigvecs = system.eig()
+    system.eig()
 
     if couplings[0] in ['X', 'Y', 'Z']:
         L = len(system.get_qubits())
@@ -307,7 +306,7 @@ def continuous_logsweep_protocol(
     init_state: np.ndarray,
     system: QuantumSimulatedSystem,
     n_energy_steps: int,
-    mode: Union['auto', 'DM', 'WF'] = 'auto'
+    mode: str = 'auto'
 ) -> np.ndarray:
     '''
     Runs the continuous-evolution QDC LogSweep protocol on the state init_state
@@ -345,7 +344,7 @@ def continuous_logsweep_protocol(
     ]
     e_max_transitions = max(perp_norm(cp, system.get_sparse_hamiltonian())
                             for cp in coupl_potentials)
-    eigvals, eigvecs = system.eig()
+    system.eig()
 
     #  define e_min, e_max using perp_norm on sparse matrices
     e_min = system.ground_state_gap()

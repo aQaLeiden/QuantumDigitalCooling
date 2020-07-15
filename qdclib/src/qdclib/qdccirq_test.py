@@ -3,9 +3,9 @@ import unittest
 
 import cirq
 
-from qdclib.qdccirq import *
-from qdclib.spinmodels import TFIMChain
-from qdclib.qdcutils import trace_out
+from .qdccirq import (bangbang_protocol,)
+from .spinmodels import TFIMChain
+from .qdcutils import trace_out
 
 class qdccirq_Test(unittest.TestCase):
 

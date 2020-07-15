@@ -1,7 +1,7 @@
 """Tests for spinmodels.py."""
 import unittest
 
-from qdclib.spinmodels import *
+from .spinmodels import TFIMChain
 
 class TFIMChain_Test(unittest.TestCase):
 

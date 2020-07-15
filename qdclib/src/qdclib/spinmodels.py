@@ -4,14 +4,14 @@ Classes describing spin models for use with qdccirq.
 V1.0 -- new module split off from qdccirq
 '''
 
-from typing import Tuple
+from typing import Sequence
 
 import numpy as np
 
 import cirq
 from openfermion import ops, transforms
 
-from qdclib._quantum_simulated_system import QuantumSimulatedSystem
+from ._quantum_simulated_system import QuantumSimulatedSystem
 
 
 class TFIMChain(QuantumSimulatedSystem):
@@ -20,7 +20,7 @@ class TFIMChain(QuantumSimulatedSystem):
     '''
 
     def __init__(self, L: int, J: float, B: float, sparse=False,
-                 qubits: Tuple[cirq.Qid, ...] = None):
+                 qubits: Sequence[cirq.Qid] = None):
         ''' TODO: TFIMChain.__init__ documentation '''
         self.L = L
         self.J = J

@@ -2,35 +2,33 @@
 Quantum Digital Cooling (QDC) implementation with cirq and openfermion.
 '''
 
-from typing import Union, Callable, Tuple
+from typing import Union, Callable, Sequence
 
 import numpy as np
 
-from cirq import (Qid,
-                  NamedQubit,
-                  Circuit,
-                  X, Y, Z, reset,
-                  PauliString,
-                  ZPowGate)
+import cirq
 from openfermion import ops, transforms
 
-from qdclib._quantum_simulated_system import QuantumSimulatedSystem
-from qdclib.qdcutils import *
+from ._quantum_simulated_system import QuantumSimulatedSystem
+from .qdcutils import (logsweep_params,
+                       trotter_number_weakcoupling_step,
+                       perp_norm,
+                       opt_delta_factor)
 
-FRIDGE = NamedQubit('fridge')
+FRIDGE = cirq.NamedQubit('fridge')
 
 
 # ****************************
 # *** QDC STEPS AND CYCLES ***
 # ****************************
 
-def qdc_step(HS_step_f: Callable[[float], Circuit],
-             coupl_step_f: Callable[[float, float], Circuit],
+def qdc_step(HS_step_f: Callable[[float], cirq.Circuit],
+             coupl_step_f: Callable[[float, float], cirq.Circuit],
              epsilon: float,
              gamma: float,
              t: float,
              qdc_trotter_number: int,
-             HS_trotter_factor: int = 1) -> Circuit:
+             HS_trotter_factor: int = 1) -> cirq.Circuit:
     '''
     Circuit implementing a generic 2nd-order trotterized QDC step.
     Typical parameters of QDC steps are indicated below.
@@ -69,20 +67,20 @@ def qdc_step(HS_step_f: Callable[[float], Circuit],
     '''
     dt = t / qdc_trotter_number
     coupl_halfstep = coupl_step_f(gamma, dt / 2)
-    c = Circuit([
+    c = cirq.Circuit([
         coupl_halfstep,
         [HS_step_f(dt / HS_trotter_factor)] * HS_trotter_factor,
-        ZPowGate(exponent=(- dt * epsilon / np.pi))(FRIDGE),
+        cirq.ZPowGate(exponent=(- dt * epsilon / np.pi))(FRIDGE),
         coupl_halfstep,
     ]) * qdc_trotter_number
-    c.append(reset(FRIDGE))
+    c.append(cirq.reset(FRIDGE))
     return c
 
 
-def bangbang_step(HS_step_f: Callable[[float], Circuit],
-                  coupl_step_f: Callable[[float, float], Circuit],
+def bangbang_step(HS_step_f: Callable[[float], cirq.Circuit],
+                  coupl_step_f: Callable[[float, float], cirq.Circuit],
                   epsilon: float,
-                  HS_trotter_factor: int = 1) -> Circuit:
+                  HS_trotter_factor: int = 1) -> cirq.Circuit:
     '''
     Circuit implementing bang-bang (Ramsey) strong coupling QDC step, with
     2nd-order trotterized system evolution.
@@ -109,13 +107,13 @@ def bangbang_step(HS_step_f: Callable[[float], Circuit],
                     HS_trotter_factor=HS_trotter_factor)
 
 
-def weakcoupling_step(HS_step_f: Callable[[float], Circuit],
-                      coupl_step_f: Callable[[float, float], Circuit],
+def weakcoupling_step(HS_step_f: Callable[[float], cirq.Circuit],
+                      coupl_step_f: Callable[[float, float], cirq.Circuit],
                       epsilon: float,
                       delta: float,
                       spectral_spread: float,
                       trotter_factor: float = 2.,
-                      HS_trotter_factor: int = 1) -> Circuit:
+                      HS_trotter_factor: int = 1) -> cirq.Circuit:
     '''
     Circuit implementing weak-coupling QDC step, with 2nd-order trotterized
     system evolution.
@@ -161,7 +159,7 @@ def weakcoupling_step(HS_step_f: Callable[[float], Circuit],
 
 # pauli_gate_exponent = time * splitting / np.pi
 
-def PX_coupl_f(qubit: Qid, P: str) -> Circuit:
+def PX_coupl_f(qubit: cirq.Qid, P: str) -> cirq.Circuit:
     '''
     Generate a PX coupling simulation function [f(gamma, dt) -> cirq.Circuit]
     to use in a QDC step. The function returns the circuit that implements
@@ -176,11 +174,11 @@ def PX_coupl_f(qubit: Qid, P: str) -> Circuit:
         a function [f(gamma, dt) -> cirq.Circuit] taking timestep and coupling
         strength gamma and returning the coupling circuit.
     '''
-    rot_dict = {'X': X, 'Y': Y, 'Z': Z}
+    rot_dict = {'X': cirq.X, 'Y': cirq.Y, 'Z': cirq.Z}
 
     def f(dt, gamma):
-        ps = PauliString([rot_dict[P].on(qubit), X.on(FRIDGE)])
-        return Circuit(ps**(dt * gamma / np.pi))
+        ps = cirq.PauliString([rot_dict[P].on(qubit), cirq.X.on(FRIDGE)])
+        return cirq.Circuit(ps**(dt * gamma / np.pi))
 
     return f
 
@@ -190,9 +188,9 @@ def PX_coupl_f(qubit: Qid, P: str) -> Circuit:
 # **************************
 
 def _pauli_couplings_from_strings(
-    couplings: Tuple[str, ...],
-    qubits: Tuple[Qid, ...]
-) -> Tuple[Callable[[float, float], Circuit], ...]:
+    couplings: Sequence[str],
+    qubits: Sequence[cirq.Qid]
+) -> Sequence[Callable[[float, float], cirq.Circuit]]:
     '''
     Returns the functional form of couplings expressed as single-qubit Pauli
     coupling potentials.
@@ -214,11 +212,11 @@ def _pauli_couplings_from_strings(
 
 def energy_sweep_protocol(
     system: QuantumSimulatedSystem,
-    couplings: Union[Tuple[str, ...],
-                     Tuple[Callable[[float, float], Circuit], ...]],
-    epsilon_list: Tuple[float, ...],
-    delta_list: Tuple[float, ...]
-) -> Circuit:
+    couplings: Union[Sequence[str],
+                     Sequence[Callable[[float, float], cirq.Circuit]]],
+    epsilon_list: Sequence[float],
+    delta_list: Sequence[float]
+) -> cirq.Circuit:
     '''
     Returns circuit of a generic QDC protocol with chosen fridge energies,
     linewidths and couplings on a QuantumSimulatedSystem.
@@ -236,18 +234,19 @@ def energy_sweep_protocol(
         epsilon_list: fridge energy sequence.
         delta_list: cooling linewidth sequence.
     '''
-    eigvals, eigvecs = system.eig()
+    eigvals = system.eig()[0]
     spectral_spread = eigvals[-1] - eigvals[0]
 
     if couplings[0] in ['X', 'Y', 'Z']:
-        couplings = _pauli_couplings_from_str(couplings, system.get_qubits())
+        couplings = _pauli_couplings_from_strings(couplings,  # type: ignore
+                                                  system.get_qubits())
 
-    c = Circuit()
+    c = cirq.Circuit()
     for epsilon, delta in zip(epsilon_list, delta_list):
         for coupling in couplings:
             c.append(weakcoupling_step(
                 HS_step_f=system.tr2_step,
-                coupl_step_f=coupling,
+                coupl_step_f=coupling,  # type: ignore
                 epsilon=epsilon,
                 delta=delta,
                 spectral_spread=spectral_spread
@@ -256,7 +255,7 @@ def energy_sweep_protocol(
 
 
 def logsweep_protocol(system: QuantumSimulatedSystem,
-                      n_energy_steps: int) -> Circuit:
+                      n_energy_steps: int) -> cirq.Circuit:
     '''
     Returns circuit of the QDC LogSweep protocol on a QuantumSimulatedSystem.
     Couplings are XX, XY, XZ on each of the system's qubits in sequence.
@@ -277,7 +276,7 @@ def logsweep_protocol(system: QuantumSimulatedSystem,
     ]
     e_max_transitions = max(perp_norm(cp, system.get_sparse_hamiltonian())
                             for cp in coupl_potentials)
-    eigvals, eigvecs = system.eig()
+    system.eig()
 
     # define e_min, e_max using perp_norm on sparse matrices
     e_min = system.ground_state_gap()
@@ -297,9 +296,9 @@ def logsweep_protocol(system: QuantumSimulatedSystem,
 
 def bangbang_protocol(
     system: QuantumSimulatedSystem,
-    coupling_paulis: Tuple[str, ...],
+    coupling_paulis: Sequence[str],
     iterations: int
-) -> Circuit:
+) -> cirq.Circuit:
     '''
     Returns circuit of the bang-bang QDC protocol, based on PX couplings
         repeated on each of the system's qubits. Fridge energy is choosen
@@ -321,7 +320,7 @@ def bangbang_protocol(
     '''
     n_qubits = len(system.get_qubits())
 
-    c = Circuit()
+    c = cirq.Circuit()
     for qubit_idx, qubit in enumerate(system.get_qubits()):
         for P in coupling_paulis:
             coupling_qop = ops.QubitOperator(P + str(qubit_idx))

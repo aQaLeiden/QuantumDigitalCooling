@@ -50,7 +50,7 @@ def perp_norm(operator: Union[ops.SymbolicOperator,
 def logsweep_params(e_min: float,
                     e_max: float,
                     n_energy_steps: float,
-                    delta_factor: int = 1):
+                    delta_factor: float = 1):
     '''
     List of epsilons and deltas to implement LogSweep QDC protocol, defined by:
     epsilon[0] == e_max
@@ -81,7 +81,7 @@ def opt_delta_factor(e_min: float, e_max: float, n_energy_steps: int) -> float:
 
 def trotter_number_weakcoupling_step(delta: float,
                                      spectral_spread: float,
-                                     trotter_factor: int = 2) -> int:
+                                     trotter_factor: float = 2.) -> int:
     '''
     Default number of trotter steps M for a QDC weak coupling step:
         M = int(trotter_factor * np.sqrt(1 + (E_max) ** 2 / (PI * delta) ** 2))

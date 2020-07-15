@@ -1,8 +1,10 @@
 """Tests for spinmodels.py."""
 import unittest
 
-from qdclib.qdcnumpy import *
-from qdclib.spinmodels import TFIMChain
+import numpy as np
+
+from .qdcnumpy import (continuous_logsweep_protocol,)
+from .spinmodels import TFIMChain
 
 class qdcnumpy_Test(unittest.TestCase):
 
