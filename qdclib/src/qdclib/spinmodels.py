@@ -9,7 +9,7 @@ from typing import Sequence
 import numpy as np
 
 import cirq
-from openfermion import ops, transforms
+import openfermion
 
 from ._quantum_simulated_system import QuantumSimulatedSystem
 
@@ -34,11 +34,11 @@ class TFIMChain(QuantumSimulatedSystem):
             qubits = [cirq.LineQubit(i) for i in range(L)]
         else:
             qubits = qubits
-        self.qubit_ham = ops.QubitOperator('X0', -B)
+        self.qubit_ham = openfermion.QubitOperator('X0', -B)
         for i in range(L - 1):
-            self.qubit_ham += ops.QubitOperator(f'X{i+1}', -B)
-            self.qubit_ham += ops.QubitOperator(f'Z{i} Z{i+1}', -J)
-        sparse_ham = transforms.get_sparse_operator(self.qubit_ham)
+            self.qubit_ham += openfermion.QubitOperator(f'X{i+1}', -B)
+            self.qubit_ham += openfermion.QubitOperator(f'Z{i} Z{i+1}', -J)
+        sparse_ham = openfermion.get_sparse_operator(self.qubit_ham)
         super().__init__(sparse_ham, qubits, ground_state_degeneracy, sparse)
 
     def get_qubit_hamiltonian(self):

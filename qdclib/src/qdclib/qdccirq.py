@@ -7,7 +7,7 @@ from typing import Union, Callable, Sequence
 import numpy as np
 
 import cirq
-from openfermion import ops, transforms
+import openfermion
 
 from ._quantum_simulated_system import QuantumSimulatedSystem
 from .qdcutils import (logsweep_params,
@@ -271,7 +271,8 @@ def logsweep_protocol(system: QuantumSimulatedSystem,
     '''
     L = len(system.get_qubits())
     coupl_potentials = [
-        transforms.get_sparse_operator(ops.QubitOperator((i, P),), n_qubits=L)
+        openfermion.get_sparse_operator(
+            openfermion.QubitOperator((i, P),), n_qubits=L)
         for i in range(L) for P in ('X', 'Y', 'Z')
     ]
     e_max_transitions = max(perp_norm(cp, system.get_sparse_hamiltonian())
@@ -323,9 +324,9 @@ def bangbang_protocol(
     c = cirq.Circuit()
     for qubit_idx, qubit in enumerate(system.get_qubits()):
         for P in coupling_paulis:
-            coupling_qop = ops.QubitOperator(P + str(qubit_idx))
-            coupling_sparse = transforms.get_sparse_operator(coupling_qop,
-                                                             n_qubits=n_qubits)
+            coupling_qop = openfermion.QubitOperator(P + str(qubit_idx))
+            coupling_sparse = openfermion.get_sparse_operator(
+                coupling_qop, n_qubits=n_qubits)
             epsilon = perp_norm(coupling_sparse,
                                 system.get_sparse_hamiltonian())
 

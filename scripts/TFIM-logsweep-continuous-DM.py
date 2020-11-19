@@ -24,6 +24,8 @@ import json
 from qdclib import qdcnumpy
 from qdclib import spinmodels
 
+from jsonencoder import encode_complex_and_array
+
 
 # Prepare file paths
 cooling_dir = os.path.join(data_dir, "cooling")
@@ -60,6 +62,7 @@ if not cooling_out_exists:
     # build maximally-mixed system state tensored with |0><0| fridge
     init_state = np.diag(np.repeat(np.complex64(1 / 2**L), 2**L))
 
+    time.sleep(1)
     final_state = qdcnumpy.continuous_logsweep_protocol(init_state, system, K)
 
     out_dict = dict(
@@ -85,7 +88,11 @@ if not reheating_out_exists:
     system_ground_state = system.ground_space_projector(normalized=True)
     init_state = np.array(system_ground_state, dtype=np.complex64)
 
+    time.sleep(1)
     final_state = qdcnumpy.continuous_logsweep_protocol(init_state, system, K)
+
+    eigvec = system.eig()[1]
+    final_state_in_eigenbasis = eigvec.conj().T @ final_state @ eigvec
 
     out_dict = dict(
         L=L,
@@ -94,10 +101,11 @@ if not reheating_out_exists:
         K=K,
         init_state='ground state',
         energy=system.energy_expval(final_state),
-        eigoccs=list(system.eigenstate_occupations(final_state))
+        eigoccs=system.eigenstate_occupations(final_state),
+        final_state_in_eigenbasis=final_state_in_eigenbasis
     )
 
     with open(outfile_reheating, 'wt') as f:
-        json.dump(out_dict, f)
+        json.dump(out_dict, f, default=encode_complex_and_array)
 
     print('done in', time.time() - stopwatch, 'seconds.')

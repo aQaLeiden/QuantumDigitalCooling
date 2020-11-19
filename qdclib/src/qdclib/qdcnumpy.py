@@ -18,7 +18,7 @@ from typing import Union, Sequence
 import numpy as np
 import scipy.linalg
 
-from openfermion import ops, transforms
+import openfermion
 
 from ._quantum_simulated_system import QuantumSimulatedSystem
 from .qdcutils import (trace_out, perp_norm, opt_delta_factor, logsweep_params)
@@ -179,11 +179,10 @@ def continuous_evolution_step(
     X = np.array([[0, 1], [1, 0]])
     Z = np.array([[1, 0], [0, -1]])
     # fast hermitian matrix exponential -> coupled evolution
-    eigvals, eigvecs = scipy.linalg.eigh(
-        np.kron(ham_sys, np.eye(2))
-        + np.kron(np.eye(*np.shape(ham_sys)), - Z / 2 * epsilon)
-        + np.kron(coupling, X / 2 * gamma)
-    )
+    herm_matr = (np.kron(ham_sys, np.eye(2))
+                 + np.kron(np.eye(*np.shape(ham_sys)), - Z / 2 * epsilon)
+                 + np.kron(coupling, X / 2 * gamma))
+    eigvals, eigvecs = scipy.linalg.eigh(herm_matr)
     phases = np.exp(1j * eigvals * t)
     evo = eigvecs @ np.diag(phases) @ eigvecs.conjugate().T
     # TODO optimize evo calculation removing np.diag
@@ -280,9 +279,8 @@ def continuous_energy_sweep_protocol(
     if couplings[0] in ['X', 'Y', 'Z']:
         L = len(system.get_qubits())
         couplings = [
-            transforms.get_sparse_operator(ops.QubitOperator(f'{P}{qubit}'),
-                                           n_qubits=L
-                                           ).A
+            openfermion.get_sparse_operator(
+                openfermion.QubitOperator(f'{P}{qubit}'), n_qubits=L).A
             for qubit in range(L)
             for P in couplings
         ]
@@ -339,7 +337,8 @@ def continuous_logsweep_protocol(
     '''
     L = len(system.get_qubits())
     coupl_potentials = [
-        transforms.get_sparse_operator(ops.QubitOperator((i, P),), n_qubits=L)
+        openfermion.get_sparse_operator(
+            openfermion.QubitOperator((i, P),), n_qubits=L)
         for i in range(L) for P in ('X', 'Y', 'Z')
     ]
     e_max_transitions = max(perp_norm(cp, system.get_sparse_hamiltonian())

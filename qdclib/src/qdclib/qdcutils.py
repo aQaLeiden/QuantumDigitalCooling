@@ -3,10 +3,10 @@ from typing import Union
 import numpy as np
 import scipy.sparse
 
-from openfermion import ops, transforms
+import openfermion
 
 
-def perp_norm(operator: Union[ops.SymbolicOperator,
+def perp_norm(operator: Union[openfermion.SymbolicOperator,
                               scipy.sparse.spmatrix,
                               np.ndarray],
               hamiltonian=None):
@@ -26,12 +26,12 @@ def perp_norm(operator: Union[ops.SymbolicOperator,
     same type.
     '''
     if hamiltonian is not None:
-        if isinstance(operator, ops.SymbolicOperator):
+        if isinstance(operator, openfermion.SymbolicOperator):
             operator = 1.j * (operator * hamiltonian - hamiltonian * operator)
         else:
             operator = 1.j * (operator @ hamiltonian - hamiltonian @ operator)
-    if isinstance(operator, ops.SymbolicOperator):
-        operator = transforms.get_sparse_operator(operator)
+    if isinstance(operator, openfermion.SymbolicOperator):
+        operator = openfermion.get_sparse_operator(operator)
     if isinstance(operator, scipy.sparse.spmatrix):
         if operator.shape == (1, 1):
             print("ATTENTION: perp_norm is returning 0. "
