@@ -1,4 +1,4 @@
 cirq==0.8.0
 openfermion==0.11
 numpy==1.19.0
-scipy==1.4.1
+scipy==1.10.0
